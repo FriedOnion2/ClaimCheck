@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { verify } from '../src/analyzer.js';
+import { extractClaims, MAX_HASH_BYTES, verify } from '../src/analyzer.js';
 
 const usage = `用法: claimcheck --chat <最终聊天.txt|md> --artifacts <AI输出目录> [选项]
-  --project <项目目录>   与实际项目目录做存在性核对
-  --base <Git基准>       对比该基准验证文件改动（需 --project；默认 HEAD）
+  --project <项目目录>   对比实际项目文件内容，核验当前快照是否落盘
+  --base <Git基准>       对比该基准验证文件改动（需 --project）
   --json                 输出 JSON 报告
   -h, --help             显示帮助`;
 
@@ -27,34 +28,46 @@ function optionsFrom(argv) {
   return options;
 }
 
-async function listFiles(root, prefix = '') {
+async function listFiles(root, hashPaths, prefix = '') {
   const results = [];
   for (const entry of await readdir(path.join(root, prefix), { withFileTypes: true })) {
     if (entry.name === '.git' || entry.name === 'node_modules') continue;
     const rel = path.posix.join(prefix.replaceAll('\\', '/'), entry.name);
-    if (entry.isDirectory()) results.push(...await listFiles(root, rel));
-    else if (entry.isFile()) results.push({ path: rel });
+    if (entry.isDirectory()) {
+      for (const file of await listFiles(root, hashPaths, rel)) results.push(file);
+    }
+    else if (entry.isFile()) {
+      if (!hashPaths.has(rel)) { results.push({ path: rel }); continue; }
+      const absolute = path.join(root, rel);
+      const size = (await stat(absolute)).size;
+      const sha256 = size <= MAX_HASH_BYTES ? createHash('sha256').update(await readFile(absolute)).digest('hex') : null;
+      results.push({ path: rel, sha256, size });
+    }
   }
   return results;
 }
 
 function gitChanges(project, base) {
-  const run = (args) => spawnSync('git', ['-C', project, ...args], { encoding: 'utf8', windowsHide: true });
-  if (base && run(['rev-parse', '--verify', '--end-of-options', `${base}^{commit}`]).status !== 0) throw new Error(`Git 基准不可用: ${base}`);
-  const diff = run(['diff', '--name-status', '--find-renames', '-z', base || 'HEAD', '--']);
+  const run = (args) => {
+    const output = spawnSync('git', ['-C', project, ...args], { encoding: 'utf8', windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
+    if (output.error) throw output.error;
+    return output;
+  };
+  const resolved = run(['rev-parse', '--verify', '--end-of-options', `${base}^{commit}`]);
+  if (resolved.status !== 0) throw new Error(`Git 基准不可用: ${base}`);
+  const gitBase = resolved.stdout.trim();
+  const diff = run(['diff', '--name-status', '--no-renames', '--no-ext-diff', '--relative', '-z', gitBase, '--', '.']);
   if (diff.status !== 0) throw new Error(`Git diff 失败: ${diff.stderr.trim()}`);
   const fields = diff.stdout.split('\0');
   const changes = [];
-  for (let i = 0; i < fields.length && fields[i];) {
-    const status = fields[i++];
-    const oldPath = fields[i++];
-    const newPath = /^[RC]/.test(status) ? fields[i++] : oldPath;
-    changes.push({ status: status[0], path: newPath });
+  for (let i = 0; fields[i]; i += 2) {
+    if (!fields[i + 1]) throw new Error('Git diff 返回了无法识别的路径记录');
+    changes.push({ status: fields[i][0], path: fields[i + 1] });
   }
-  const untracked = run(['ls-files', '--others', '--exclude-standard', '-z']);
+  const untracked = run(['ls-files', '--others', '--exclude-standard', '-z', '--', '.']);
   if (untracked.status !== 0) throw new Error(`读取 Git 未跟踪文件失败: ${untracked.stderr.trim()}`);
   for (const file of untracked.stdout.split('\0').filter(Boolean)) changes.push({ status: 'A', path: file });
-  return changes;
+  return { gitBase, gitChanges: changes };
 }
 
 async function run() {
@@ -64,10 +77,12 @@ async function run() {
   if (options.help) { console.log(usage); return; }
   try {
     const transcript = await readFile(options.chat, 'utf8');
-    const artifacts = await listFiles(path.resolve(options.artifacts));
-    const projectFiles = options.project ? await listFiles(path.resolve(options.project)) : null;
-    const changes = options.project ? gitChanges(path.resolve(options.project), options.base) : null;
-    const report = verify({ transcript, artifacts, projectFiles, gitChanges: changes });
+    const project = options.project ? path.resolve(options.project) : null;
+    const hashPaths = new Set(project ? extractClaims(transcript).filter(({ action }) => action !== 'delete').map(({ path }) => path) : []);
+    const artifacts = await listFiles(path.resolve(options.artifacts), hashPaths);
+    const projectFiles = project ? await listFiles(project, hashPaths) : null;
+    const gitEvidence = options.base ? gitChanges(project, options.base) : {};
+    const report = verify({ transcript, artifacts, projectFiles, ...gitEvidence });
     if (options.json) console.log(JSON.stringify(report, null, 2));
     else {
       console.log(`ClaimCheck | ${report.summary}\n`);
@@ -75,7 +90,7 @@ async function run() {
       for (const item of report.claims) console.log(`${item.status.padEnd(30)} ${item.action.padEnd(7)} ${item.path}\n  ${item.evidence}`);
       console.log('\n说明:\n- ' + report.limitations.join('\n- '));
     }
-    process.exitCode = report.claims.some((item) => ['missing', 'contradicted'].includes(item.status)) ? 1 : 0;
+    process.exitCode = report.claims.some((item) => ['missing', 'contradicted', 'content-differs'].includes(item.status)) ? 1 : 0;
   } catch (error) { console.error(`核验失败: ${error.message}`); process.exitCode = 2; }
 }
 

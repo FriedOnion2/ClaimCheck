@@ -5,7 +5,7 @@ const CREATE = /新增|新建|创建|添加|已建|created|create|added|add|wrot
 const EXTENSIONS = new Set('js jsx ts tsx mjs cjs py go rs java c h cc cpp cs php rb vue svelte html htm css scss sass json jsonc yaml yml toml md mdx txt sh bash zsh ps1 bat cmd sql xml svg env ini cfg conf lock gradle properties swift kt dart'.split(' '));
 
 export function normalizePath(value) {
-  return value.replaceAll('\\', '/').replace(/^(?:\.\/)+/, '').replace(/^\/+/, '').replace(/\/+$/, '');
+  return value.replaceAll('\\', '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, '');
 }
 
 function pathCandidates(text) {
@@ -52,7 +52,7 @@ export function extractClaims(transcript) {
     if (!ACTION.test(context)) continue;
     if (hasNegationOrFuture(context, candidate.index - Math.max(0, candidate.index - 120))) continue;
     const action = classify(context, candidate.index - Math.max(0, candidate.index - 120));
-    const key = `${candidate.path.toLowerCase()}|${action}`;
+    const key = `${candidate.path}|${action}`;
     if (seen.has(key)) continue;
     seen.add(key);
     claims.push({ path: candidate.path, action, quote: context.trim().replace(/\s+/g, ' ').slice(0, 240) });
@@ -60,42 +60,60 @@ export function extractClaims(transcript) {
   return claims;
 }
 
-function findArtifact(path, artifacts) {
-  const target = normalizePath(path).toLowerCase();
-  const exact = artifacts.find((item) => normalizePath(item.path).toLowerCase() === target);
-  if (exact) return { item: exact, match: 'exact' };
+function findArtifact(target, artifacts) {
+  const exact = artifacts.filter((item) => normalizePath(item.path) === target);
+  if (exact.length === 1) return { item: exact[0], match: 'exact' };
+  if (exact.length > 1) return { ambiguous: exact.map((item) => item.path) };
   const basename = target.split('/').at(-1);
-  const matches = artifacts.filter((item) => normalizePath(item.path).toLowerCase().split('/').at(-1) === basename);
+  const matches = artifacts.filter((item) => normalizePath(item.path).split('/').at(-1) === basename);
   if (matches.length === 1) return { item: matches[0], match: 'basename' };
   if (matches.length > 1) return { ambiguous: matches.map((item) => item.path) };
   return null;
 }
 
-export function verify({ transcript, artifacts = [], projectFiles = null, gitChanges = null }) {
+export const MAX_HASH_BYTES = 50 * 1024 * 1024;
+
+export function verify({ transcript, artifacts = [], projectFiles = null, gitChanges = null, gitBase = null }) {
   const claims = extractClaims(transcript);
   const results = claims.map((claim) => {
+    if (/^(?:\/|[a-z]:)/i.test(claim.path) || claim.path.split('/').includes('..')) {
+      return { ...claim, status: 'unverified', evidence: '请使用相对于所选项目根目录的文件路径' };
+    }
     const artifact = findArtifact(claim.path, artifacts);
-    const projectFile = projectFiles?.find((item) => normalizePath(item.path).toLowerCase() === claim.path.toLowerCase());
-    const change = gitChanges?.find((item) => normalizePath(item.path).toLowerCase() === claim.path.toLowerCase());
+    const projectFile = projectFiles?.find((item) => normalizePath(item.path) === claim.path);
+    const change = gitChanges?.find((item) => normalizePath(item.path) === claim.path);
+    const row = { ...claim, artifactPath: artifact?.item?.path ?? null, projectPath: projectFile?.path ?? null, gitStatus: change?.status ?? null };
+    const result = (status, evidence, extra) => ({ ...row, status, evidence, ...extra });
     if (claim.action === 'delete') {
-      if (change?.status === 'D') return { ...claim, status: 'verified', evidence: `Git 基准差异显示文件已删除: ${change.path}` };
-      if (projectFile?.exists) return { ...claim, status: 'contradicted', evidence: '目标项目中该文件仍存在' };
-      return { ...claim, status: 'unverified', evidence: '缺少可确认删除的 Git 差异或项目基准' };
+      if (projectFile) return result('contradicted', '目标项目中该路径仍有文件');
+      if (change?.status === 'D') return result('verified', `Git 基准差异显示文件已删除: ${change.path}`);
+      return result('unverified', '缺少可确认删除的 Git 差异或项目基准');
     }
-    if (change && /^(A|M|R|C|T)/.test(change.status)) return { ...claim, status: 'verified', evidence: `相对于 Git 基准检测到 ${change.status} 变更: ${change.path}` };
+    if (projectFiles && !projectFile) return result('missing', '目标项目快照中没有声明路径的文件');
+    if (artifact?.match === 'exact' && projectFile?.sha256 && artifact.item.sha256) {
+      const hashes = { projectSha256: projectFile.sha256, artifactSha256: artifact.item.sha256 };
+      if (hashes.projectSha256 === hashes.artifactSha256) return result('persisted-exact', '项目当前文件与同路径输出逐字节一致（SHA-256）', hashes);
+      return result('content-differs', '项目当前文件与同路径 AI 输出的 SHA-256 不一致', hashes);
+    }
+    if (projectFile && (claim.action === 'create' ? change?.status === 'A' : /^(M|T)$/.test(change?.status ?? ''))) {
+      return result('verified', `相对于 Git 基准检测到 ${change.status} 变更: ${change.path}；未证实输出内容一致`);
+    }
+    if (artifact?.ambiguous) return result('ambiguous', `存在多个可能匹配的产物: ${artifact.ambiguous.join(', ')}`);
+    if (projectFile) {
+      const reason = artifact?.match === 'basename' ? '仅找到同名产物，路径不一致' : artifact ? '未取得可比对的文件哈希' : '缺少同路径输出文件';
+      return result('present-not-proven-changed', `目标路径存在；${reason}`);
+    }
     if (artifact) {
-      if (artifact.ambiguous) return { ...claim, status: 'ambiguous', evidence: `存在多个同名产物: ${artifact.ambiguous.join(', ')}` };
-      return { ...claim, status: 'artifact-present', evidence: `在所提供的 AI 输出文件中找到${artifact.match === 'basename' ? '（仅文件名匹配）' : ''}: ${artifact.item.path}` };
+      return result('artifact-present', `在所提供的 AI 输出文件中找到${artifact.match === 'basename' ? '（仅文件名匹配）' : ''}: ${artifact.item.path}`);
     }
-    if (projectFile?.exists) return { ...claim, status: 'present-not-proven-changed', evidence: '目标项目中存在该文件，但相对于所选 Git 基准未检测到变更' };
-    return { ...claim, status: 'missing', evidence: '未在所提供的输出文件或项目中找到该路径' };
+    return result('missing', '未在所提供的输出文件中找到该路径');
   });
-  const statusNames = ['verified', 'artifact-present', 'present-not-proven-changed', 'missing', 'contradicted', 'ambiguous', 'unverified'];
+  const statusNames = ['persisted-exact', 'content-differs', 'verified', 'artifact-present', 'present-not-proven-changed', 'missing', 'contradicted', 'ambiguous', 'unverified'];
   const counts = Object.fromEntries(statusNames.map((key) => [key, results.filter((item) => item.status === key).length]));
   const summary = !claims.length
     ? '未识别到带明确文件路径的修改声明'
-    : gitChanges !== null
-      ? `${counts.verified}/${claims.length} 项声明由 Git 差异直接核实`
+    : projectFiles !== null
+      ? `内容一致 ${counts['persisted-exact']} 项；仅有 Git 变更证据 ${counts.verified} 项；内容不符 ${counts['content-differs']} 项；目标缺失 ${counts.missing} 项（共 ${claims.length} 项）`
       : `${counts['artifact-present']}/${claims.length} 项声明在所提供的输出文件中匹配；这不证明目标项目落盘`;
-  return { claims: results, counts, summary, limitations: ['只分析聊天中带明确文件路径的声明；自然语言解析可能漏报或误报。', '输出文件匹配只能证明产物存在，不能单独证明已写入目标项目。', '未提供 Git 基准时，无法验证删除或区分旧文件与本次修改。', '不会判断代码逻辑正确性，也不会验证测试、构建或部署声明。'] };
+  return { claims: results, counts, summary, gitBase, limitations: ['只分析聊天中带明确文件路径的声明；自然语言解析可能漏报或误报。', '哈希一致证明采集时目标项目文件与输出文件逐字节一致，不证明是谁写入的。', '修改前的 Git 基准可以证明文件发生过变更或删除，但无法证明由哪个 AI 执行。', '不会判断代码逻辑正确性，也不会验证测试、构建或部署声明。'] };
 }

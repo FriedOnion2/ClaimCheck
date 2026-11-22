@@ -4,11 +4,13 @@ ClaimCheck compares explicit file-change claims in an AI coding assistant's fina
 
 ## Evidence levels
 
-- **Verified**: Git evidence relative to a selected baseline shows the claimed file was added, modified, renamed, or deleted.
+- **Persisted exact**: SHA-256 of the same-path AI output file matches the current target-project file. This confirms byte-for-byte equality at scan time.
+- **Git verified**: Git evidence relative to a selected baseline shows the claimed file was added, modified, renamed, or deleted.
+- **Content differs**: the target project contains the claimed path but its current bytes do not match the supplied AI output.
 - **Artifact present**: the claimed path appears in the supplied AI output files. This proves only that the file was supplied, not that it was written to a target project.
-- **Missing / contradicted / unverified**: evidence is absent, conflicts with the claim, or cannot establish it.
+- **Present but unproven / missing / contradicted / unverified**: evidence is incomplete, absent, conflicts with the claim, or cannot establish it.
 
-Claim extraction is heuristic and considers explicit paths near change verbs. It does not establish semantic correctness, test success, runtime behavior, or deployment. Final chat and detached output files alone cannot prove persistence in an otherwise unprovided project; use the Git-aware CLI for that.
+Claim extraction is heuristic and considers explicit paths near change verbs. For current-snapshot verification, also select the actual target project folder in the web app, or pass `--project` in the CLI. Hash equality confirms the project contains identical bytes at scan time, but cannot alone prove that this AI wrote them in this session. To establish change attribution, use a pre-change Git baseline. It does not establish semantic correctness, test success, runtime behavior, or deployment.
 
 ## Web app
 
@@ -18,7 +20,7 @@ Requires Node.js 20 or newer. No install step or third-party dependencies.
 npm start
 ```
 
-Open `http://127.0.0.1:4173`. Paste the final AI response, select the AI output folder, and run the check. Processing stays in the browser; the local server only serves static app files.
+Open `http://127.0.0.1:4173`. Paste the final AI response, select the AI output folder, and optionally select the actual target project folder for SHA-256 snapshot comparison. Processing stays in the browser; files are read locally and never uploaded.
 
 ## CLI
 
@@ -32,7 +34,7 @@ Compare against a project snapshot and Git baseline:
 node ./bin/claimcheck.js --chat ./final-response.md --artifacts ./ai-output --project ./my-project --base HEAD --json
 ```
 
-`--base` may be a commit, tag, or branch and must resolve in the project. Without `--base`, the CLI compares to `HEAD`. Untracked non-ignored files are included as additions. Exit codes: `0` no missing/contradicted claims, `1` at least one missing or contradicted claim, `2` invalid arguments or I/O/Git error.
+`--project` computes SHA-256 fingerprints for claimed paths to compare current project files against same-path AI outputs. Files larger than 50 MiB are not hashed. `--base` is optional; when supplied, it must resolve to a commit and enables Git change/deletion evidence relative to that commit. Untracked non-ignored files are included as additions. Exit codes: `0` no missing, contradicted, or content-mismatch claims, `1` at least one such claim, `2` invalid arguments or I/O/Git error.
 
 ## Development
 

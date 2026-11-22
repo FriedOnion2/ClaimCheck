@@ -18,6 +18,49 @@ test('matches exact artifact path and reports artifact-only evidence honestly', 
   assert.equal(report.claims[0].status, 'artifact-present');
   assert.match(report.summary, /不证明目标项目落盘/);
 });
+test('confirms current project persistence by matching file hashes', () => {
+  const sha256 = 'a'.repeat(64);
+  const report = verify({
+    transcript: '已修改 `src/app.js`',
+    artifacts: [{ path: 'src/app.js', sha256 }],
+    projectFiles: [{ path: 'src/app.js', sha256 }],
+  });
+  assert.equal(report.claims[0].status, 'persisted-exact');
+});
+test('flags same-path project content that differs from the supplied output', () => {
+  const report = verify({
+    transcript: '已修改 `src/app.js`',
+    artifacts: [{ path: 'src/app.js', sha256: 'a'.repeat(64) }],
+    projectFiles: [{ path: 'src/app.js', sha256: 'b'.repeat(64) }],
+  });
+  assert.equal(report.claims[0].status, 'content-differs');
+});
+test('does not use basename or directory suffixes as proof of persistence', () => {
+  const transcript = '已修改 `src/app.js`';
+  const report = verify({
+    transcript,
+    artifacts: [{ path: 'archive/src/app.js', sha256: 'a'.repeat(64) }],
+    projectFiles: [{ path: 'other/src/app.js', sha256: 'a'.repeat(64) }],
+  });
+  assert.equal(report.claims[0].status, 'missing');
+  assert.notEqual(report.claims[0].status, 'persisted-exact');
+});
+test('exact project paths beat basename matches in nested directories', () => {
+  const report = verify({
+    transcript: '已修改 `src/app.js`',
+    artifacts: [{ path: 'src/app.js', sha256: 'a'.repeat(64) }],
+    projectFiles: [{ path: 'src/app.js', sha256: 'a'.repeat(64) }, { path: 'archive/app.js', sha256: 'b'.repeat(64) }],
+  });
+  assert.equal(report.claims[0].status, 'persisted-exact');
+});
+test('project snapshot proves absence even if a similarly named artifact exists', () => {
+  const report = verify({
+    transcript: '已修改 `src/app.js`',
+    artifacts: [{ path: 'src/app.js', sha256: 'a'.repeat(64) }],
+    projectFiles: [{ path: 'archive/src/app.js', sha256: 'a'.repeat(64) }],
+  });
+  assert.equal(report.claims[0].status, 'missing');
+});
 test('reports missing output files', () => assert.equal(verify({ transcript: 'Created `src/new.js`' }).claims[0].status, 'missing'));
 test('only verifies a deletion when Git reports it', () => {
   const input = { transcript: 'Deleted `src/old.js`', projectFiles: [] };
@@ -25,7 +68,7 @@ test('only verifies a deletion when Git reports it', () => {
   assert.equal(verify({ ...input, gitChanges: [{ status: 'D', path: 'src/old.js' }] }).claims[0].status, 'verified');
 });
 test('detects contradictory claims when a deleted path still exists', () => {
-  const report = verify({ transcript: '删除 `src/old.js`', projectFiles: [{ path: 'src/old.js', exists: true }] });
+  const report = verify({ transcript: '删除 `src/old.js`', projectFiles: [{ path: 'src/old.js' }] });
   assert.equal(report.claims[0].status, 'contradicted');
 });
 test('reports basename ambiguity rather than guessing', () => {

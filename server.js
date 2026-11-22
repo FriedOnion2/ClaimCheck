@@ -15,7 +15,7 @@ const server = createServer(async (req, res) => {
   if (pathname !== '/src/analyzer.js' && !resolved.startsWith(root + path.sep) && resolved !== root) { res.writeHead(403).end('Forbidden'); return; }
   try {
     const body = await readFile(resolved);
-    res.writeHead(200, { 'Content-Type': types[path.extname(resolved)] || 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'" });
+    res.writeHead(200, { 'Content-Type': types[path.extname(resolved)] || 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'" });
     res.end(body);
   } catch { res.writeHead(404).end('Not found'); }
 });

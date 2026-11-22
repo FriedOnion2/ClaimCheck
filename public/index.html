@@ -10,7 +10,7 @@
     <section class="intro"><p class="eyebrow">CHANGE CLAIM VERIFIER</p><h1>核对 AI 声称的修改</h1><p class="lede">将最终聊天内容与 AI 输出文件对照，逐条查看哪些声明有文件证据。</p></section>
     <section class="inputs" aria-label="核验输入">
       <div class="input-block"><div class="section-head"><div><span class="step">01</span><h2>最终聊天内容</h2></div><button class="text-button" id="load-example" type="button">载入示例</button></div>
-        <textarea id="transcript" spellcheck="false" placeholder="粘贴 AI 最后一条回复，或选择 .txt / .md 聊天文件"></textarea>
+        <textarea id="transcript" aria-label="最终聊天内容" spellcheck="false" placeholder="粘贴 AI 最后一条回复，或选择 .txt / .md 聊天文件"></textarea>
         <label class="file-link">选择聊天文件<input id="chat-file" type="file" accept=".txt,.md,.log,.json,text/plain,text/markdown,application/json"></label>
       </div>
       <div class="input-block"><div class="section-head"><div><span class="step">02</span><h2>AI 输出文件</h2></div><span class="file-count" id="file-count">未选择文件</span></div>
@@ -18,7 +18,9 @@
         <div class="selected-files" id="selected-files" aria-live="polite"></div>
       </div>
     </section>
-    <section class="options-row"><p class="options-note">需要核验目标项目的实际 Git 变更？CLI 支持指定基准比对。</p><button id="verify" class="primary-button" type="button"><span>核验声明</span><span aria-hidden="true">→</span></button></section>
+    <section class="snapshot-row"><div><span class="step">03</span><h2>目标项目快照 <span>落盘核验</span></h2><p>选择实际项目文件夹，对照同路径文件的 SHA-256。文件仅在本机读取。</p></div><label class="secondary-button">选择项目文件夹<input id="project-files" type="file" multiple webkitdirectory directory></label><span class="file-count" id="project-count">未选择项目（可选）</span></section>
+    <section class="options-row"><p class="options-note">Git 基准核验：CLI</p><button id="verify" class="primary-button" type="button"><span>核验声明</span><span aria-hidden="true">→</span></button></section>
+    <p id="verify-error" class="status bad" role="alert" hidden></p>
     <section class="results" id="results" hidden aria-live="polite"><div class="results-head"><div><p class="eyebrow">EVIDENCE REPORT</p><h2>核验结果</h2></div><button class="text-button" id="download-report" type="button">导出 JSON</button></div><p id="summary" class="summary"></p><div class="table-wrap"><table><thead><tr><th>状态</th><th>操作</th><th>声明路径</th><th>证据</th></tr></thead><tbody id="claim-rows"></tbody></table></div><details class="limitations"><summary>核验边界</summary><ul id="limitation-list"></ul></details></section>
     <footer><span>不依赖特定 AI 厂商 · 不上传内容 · 开源可审计</span><span>证据核对不等于代码正确性证明</span></footer>
   </main>
