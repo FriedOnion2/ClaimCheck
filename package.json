@@ -1,0 +1,11 @@
+{
+  "name": "claimcheck-ai-change-verifier",
+  "version": "1.0.0",
+  "private": false,
+  "description": "Local, vendor-neutral evidence checker for AI coding change claims",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node server.js", "test": "node --test", "check": "node --check bin/claimcheck.js && node --check src/analyzer.js && node --check server.js && node --check public/app.js" },
+  "bin": { "claimcheck": "bin/claimcheck.js" },
+  "license": "MIT"
+}

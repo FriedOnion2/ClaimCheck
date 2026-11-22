@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f5f7f6">
+  <title>ClaimCheck | AI 修改核验</title><link rel="stylesheet" href="/styles.css"><script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="/" aria-label="ClaimCheck 首页"><span class="brand-mark">C</span><span>ClaimCheck</span></a><span class="local-badge"><span></span>本地处理</span></header>
+  <main>
+    <section class="intro"><p class="eyebrow">CHANGE CLAIM VERIFIER</p><h1>核对 AI 声称的修改</h1><p class="lede">将最终聊天内容与 AI 输出文件对照，逐条查看哪些声明有文件证据。</p></section>
+    <section class="inputs" aria-label="核验输入">
+      <div class="input-block"><div class="section-head"><div><span class="step">01</span><h2>最终聊天内容</h2></div><button class="text-button" id="load-example" type="button">载入示例</button></div>
+        <textarea id="transcript" spellcheck="false" placeholder="粘贴 AI 最后一条回复，或选择 .txt / .md 聊天文件"></textarea>
+        <label class="file-link">选择聊天文件<input id="chat-file" type="file" accept=".txt,.md,.log,.json,text/plain,text/markdown,application/json"></label>
+      </div>
+      <div class="input-block"><div class="section-head"><div><span class="step">02</span><h2>AI 输出文件</h2></div><span class="file-count" id="file-count">未选择文件</span></div>
+        <label class="dropzone" id="dropzone"><input id="artifact-files" type="file" multiple webkitdirectory directory><span class="upload-icon" aria-hidden="true">＋</span><strong>选择输出文件夹</strong><span>或将文件拖放到此处</span><small>支持多文件；不会上传到网络</small></label>
+        <div class="selected-files" id="selected-files" aria-live="polite"></div>
+      </div>
+    </section>
+    <section class="options-row"><p class="options-note">需要核验目标项目的实际 Git 变更？CLI 支持指定基准比对。</p><button id="verify" class="primary-button" type="button"><span>核验声明</span><span aria-hidden="true">→</span></button></section>
+    <section class="results" id="results" hidden aria-live="polite"><div class="results-head"><div><p class="eyebrow">EVIDENCE REPORT</p><h2>核验结果</h2></div><button class="text-button" id="download-report" type="button">导出 JSON</button></div><p id="summary" class="summary"></p><div class="table-wrap"><table><thead><tr><th>状态</th><th>操作</th><th>声明路径</th><th>证据</th></tr></thead><tbody id="claim-rows"></tbody></table></div><details class="limitations"><summary>核验边界</summary><ul id="limitation-list"></ul></details></section>
+    <footer><span>不依赖特定 AI 厂商 · 不上传内容 · 开源可审计</span><span>证据核对不等于代码正确性证明</span></footer>
+  </main>
+</body>
+</html>
