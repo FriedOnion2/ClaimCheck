@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractClaims, verify, normalizePath } from '../src/analyzer.js';
+import { extractClaims, verify, normalizePath, splitRequirements } from '../src/analyzer.js';
 
 test('extracts English and Chinese file modification claims', () => {
   const claims = extractClaims('Modified `src/main.ts` and 新增 `tests/main.test.ts`。');
@@ -76,3 +76,33 @@ test('reports basename ambiguity rather than guessing', () => {
   assert.equal(report.claims[0].status, 'ambiguous');
 });
 test('normalizes Windows separators', () => assert.equal(normalizePath('src\\a.js'), 'src/a.js'));
+
+test('splits original requests into separate checklist items', () => {
+  assert.deepEqual(splitRequirements('修复登录验证。\n- 新增单元测试\n2. 更新 README'), [
+    { id: 1, text: '修复登录验证。' },
+    { id: 2, text: '新增单元测试' },
+    { id: 3, text: '更新 README' },
+  ]);
+});
+test('requirement mention is only a text clue, never a completion verdict', () => {
+  const report = verify({
+    request: '修复登录验证。新增单元测试。',
+    transcript: '已修复登录验证，新增单元测试。',
+  });
+  assert.equal(report.requirements.length, 2);
+  assert.ok(report.requirements.every((item) => item.status === 'mentioned'));
+  assert.ok(report.requirements.every((item) => /不证明要求已实现/.test(item.evidence)));
+  assert.match(report.repairPrompt, /用户原始要求/);
+  assert.match(report.repairPrompt, /运行相关测试/);
+});
+test('repair prompt flags an omitted requirement and includes missing file evidence', () => {
+  const report = verify({
+    request: '新增登录审计日志。\n更新 README 使用说明。',
+    transcript: '新增 `src/audit.js`。',
+    artifacts: [],
+  });
+  assert.equal(report.requirements[1].status, 'not-mentioned');
+  assert.match(report.repairPrompt, /回复中未明显提及/);
+  assert.ok(report.repairPrompt.includes('src/audit.js'));
+  assert.match(report.repairPrompt, /更新 README 使用说明/);
+});

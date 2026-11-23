@@ -7,21 +7,28 @@
 <body>
   <header class="topbar"><a class="brand" href="/" aria-label="ClaimCheck 首页"><span class="brand-mark">C</span><span>ClaimCheck</span></a><span class="local-badge"><span></span>本地处理</span></header>
   <main>
-    <section class="intro"><p class="eyebrow">CHANGE CLAIM VERIFIER</p><h1>核对 AI 声称的修改</h1><p class="lede">将最终聊天内容与 AI 输出文件对照，逐条查看哪些声明有文件证据。</p></section>
+    <section class="intro"><p class="eyebrow">REQUEST & EVIDENCE CHECKER</p><h1>核对 AI 是否完成了你的要求</h1><p class="lede">对照原始要求、AI 最终回复和文件证据；发现疑点时生成可直接交回 AI 的修复指令。</p></section>
+    <section class="request-block"><div class="section-head"><div><span class="step">01</span><h2>用户原始要求 <span class="required">必填</span></h2></div></div>
+      <textarea id="request" aria-label="用户原始要求" spellcheck="false" placeholder="粘贴你最初交给 AI 的完整要求。分行或分点写更便于逐项对照。"></textarea>
+    </section>
     <section class="inputs" aria-label="核验输入">
-      <div class="input-block"><div class="section-head"><div><span class="step">01</span><h2>最终聊天内容</h2></div><button class="text-button" id="load-example" type="button">载入示例</button></div>
+      <div class="input-block"><div class="section-head"><div><span class="step">02</span><h2>AI 最终回复</h2></div><button class="text-button" id="load-example" type="button">载入示例</button></div>
         <textarea id="transcript" aria-label="最终聊天内容" spellcheck="false" placeholder="粘贴 AI 最后一条回复，或选择 .txt / .md 聊天文件"></textarea>
         <label class="file-link">选择聊天文件<input id="chat-file" type="file" accept=".txt,.md,.log,.json,text/plain,text/markdown,application/json"></label>
       </div>
-      <div class="input-block"><div class="section-head"><div><span class="step">02</span><h2>AI 输出文件</h2></div><span class="file-count" id="file-count">未选择文件</span></div>
+      <div class="input-block"><div class="section-head"><div><span class="step">03</span><h2>AI 输出文件</h2></div><span class="file-count" id="file-count">未选择文件</span></div>
         <label class="dropzone" id="dropzone"><input id="artifact-files" type="file" multiple webkitdirectory directory><span class="upload-icon" aria-hidden="true">＋</span><strong>选择输出文件夹</strong><span>或将文件拖放到此处</span><small>支持多文件；不会上传到网络</small></label>
         <div class="selected-files" id="selected-files" aria-live="polite"></div>
       </div>
     </section>
-    <section class="snapshot-row"><div><span class="step">03</span><h2>目标项目快照 <span>落盘核验</span></h2><p>选择实际项目文件夹，对照同路径文件的 SHA-256。文件仅在本机读取。</p></div><label class="secondary-button">选择项目文件夹<input id="project-files" type="file" multiple webkitdirectory directory></label><span class="file-count" id="project-count">未选择项目（可选）</span></section>
-    <section class="options-row"><p class="options-note">Git 基准核验：CLI</p><button id="verify" class="primary-button" type="button"><span>核验声明</span><span aria-hidden="true">→</span></button></section>
+    <section class="snapshot-row"><div><span class="step">04</span><h2>目标项目快照 <span>落盘核验</span></h2><p>选择实际项目文件夹，对照同路径文件的 SHA-256。文件仅在本机读取。</p></div><label class="secondary-button">选择项目文件夹<input id="project-files" type="file" multiple webkitdirectory directory></label><span class="file-count" id="project-count">未选择项目（建议提供）</span></section>
+    <section class="options-row"><p class="options-note">本地分析，不上传要求、回复或文件。自动结果是文本线索，不是语义完成证明。</p><button id="verify" class="primary-button" type="button"><span>开始核验</span><span aria-hidden="true">→</span></button></section>
     <p id="verify-error" class="status bad" role="alert" hidden></p>
-    <section class="results" id="results" hidden aria-live="polite"><div class="results-head"><div><p class="eyebrow">EVIDENCE REPORT</p><h2>核验结果</h2></div><button class="text-button" id="download-report" type="button">导出 JSON</button></div><p id="summary" class="summary"></p><div class="table-wrap"><table><thead><tr><th>状态</th><th>操作</th><th>声明路径</th><th>证据</th></tr></thead><tbody id="claim-rows"></tbody></table></div><details class="limitations"><summary>核验边界</summary><ul id="limitation-list"></ul></details></section>
+    <section class="results" id="results" hidden aria-live="polite"><div class="results-head"><div><p class="eyebrow">EVIDENCE REPORT</p><h2>核验结果</h2></div><button class="text-button" id="download-report" type="button">导出 JSON</button></div><p id="summary" class="summary"></p>
+      <h3 class="subheading">用户要求对照 <span>提及不等于完成</span></h3><div id="requirement-rows" class="requirement-rows"></div>
+      <h3 class="subheading">文件证据</h3><div class="table-wrap"><table><thead><tr><th>状态</th><th>操作</th><th>声明路径</th><th>证据</th></tr></thead><tbody id="claim-rows"></tbody></table></div>
+      <section class="repair-section"><div class="results-head"><div><p class="eyebrow">COPY BACK TO YOUR AI</p><h3>交给 AI 的复核 / 修复指令</h3></div><button class="text-button" id="copy-repair" type="button">复制修复指令</button></div><p class="repair-hint">指令包含原始要求、AI 最终回复和核验发现。把它贴回原 AI 对话，让 AI 检查真实项目并修复确实存在的问题。</p><textarea id="repair-prompt" readonly aria-label="AI 复核修复指令"></textarea></section>
+      <details class="limitations"><summary>核验边界</summary><ul id="limitation-list"></ul></details></section>
     <footer><span>不依赖特定 AI 厂商 · 不上传内容 · 开源可审计</span><span>证据核对不等于代码正确性证明</span></footer>
   </main>
 </body>

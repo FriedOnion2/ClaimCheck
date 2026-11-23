@@ -34,11 +34,17 @@ test('CLI verifies actual added, modified, and deleted Git paths', { skip: !gitA
     await writeFile(path.join(artifacts, 'src', 'new.js'), 'export {};');
     await writeFile(path.join(artifacts, 'src', 'space name.js'), 'export const named = true;');
     const chatPath = path.join(temp, 'chat.md');
+    const requestPath = path.join(temp, 'request.md');
+    await writeFile(requestPath, '修改 src/app.js。新增 src/new.js。');
     await writeFile(chatPath, '已修改 `src/app.js`，并新增 `src/new.js` 和 `src/space name.js`');
-    const run = () => spawnSync(process.execPath, [cli, '--chat', chatPath, '--artifacts', artifacts, '--project', project, '--base', 'HEAD', '--json'], { encoding: 'utf8' });
+    const run = () => spawnSync(process.execPath, [cli, '--request', requestPath, '--chat', chatPath, '--artifacts', artifacts, '--project', project, '--base', 'HEAD', '--json'], { encoding: 'utf8' });
     let result = run();
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout).claims.map((item) => item.status), ['persisted-exact', 'persisted-exact', 'persisted-exact']);
+    const firstReport = JSON.parse(result.stdout);
+    assert.deepEqual(firstReport.claims.map((item) => item.status), ['persisted-exact', 'persisted-exact', 'persisted-exact']);
+    assert.equal(firstReport.requirements.length, 2);
+    assert.match(firstReport.repairPrompt, /用户原始要求/);
+    assert.match(firstReport.repairPrompt, /项目证据范围/);
 
     await writeFile(chatPath, '已修改 `src/app.js`');
     await writeFile(path.join(artifacts, 'src', 'app.js'), 'const wrong = true;');
@@ -80,8 +86,10 @@ test('CLI verifies rename claims as deletion and addition', { skip: !gitAvailabl
     await mkdir(path.join(artifacts, 'src'), { recursive: true });
     await writeFile(path.join(artifacts, 'src', 'after.js'), 'export {};');
     const chat = path.join(temp, 'chat.md');
+    const request = path.join(temp, 'request.md');
+    await writeFile(request, '删除 src/before.js。新增 src/after.js。');
     await writeFile(chat, '已删除 `src/before.js` 并新增 `src/after.js`');
-    const result = spawnSync(process.execPath, [cli, '--chat', chat, '--artifacts', artifacts, '--project', project, '--base', 'HEAD', '--json'], { encoding: 'utf8' });
+    const result = spawnSync(process.execPath, [cli, '--request', request, '--chat', chat, '--artifacts', artifacts, '--project', project, '--base', 'HEAD', '--json'], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(JSON.parse(result.stdout).claims.map(({ path: filePath, status }) => [filePath, status]), [
       ['src/before.js', 'verified'], ['src/after.js', 'persisted-exact'],

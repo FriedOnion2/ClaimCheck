@@ -1,6 +1,6 @@
 # ClaimCheck
 
-ClaimCheck compares explicit file-change claims in an AI coding assistant's final response with files supplied by the user. It is vendor-neutral: use plain-text or Markdown chat and an output folder from any AI tool. It does not call an AI API, require an account, or upload files.
+ClaimCheck compares the user's original request with an AI coding assistant's final response and the files it supplied. It creates a requirement checklist from lines and sentences, identifies which items have textual clues in the final response, checks explicit file-change claims against supplied files and an optional project snapshot, and generates a copy-ready prompt asking the AI to inspect and fix the real project. It works with any AI vendor and does not call an AI API or upload user content.
 
 ## Evidence levels
 
@@ -10,7 +10,7 @@ ClaimCheck compares explicit file-change claims in an AI coding assistant's fina
 - **Artifact present**: the claimed path appears in the supplied AI output files. This proves only that the file was supplied, not that it was written to a target project.
 - **Present but unproven / missing / contradicted / unverified**: evidence is incomplete, absent, conflicts with the claim, or cannot establish it.
 
-Claim extraction is heuristic and considers explicit paths near change verbs. For current-snapshot verification, also select the actual target project folder in the web app, or pass `--project` in the CLI. Hash equality confirms the project contains identical bytes at scan time, but cannot alone prove that this AI wrote them in this session. To establish change attribution, use a pre-change Git baseline. It does not establish semantic correctness, test success, runtime behavior, or deployment.
+Requirement splitting and text matching are heuristic. “Mentioned” means only that words overlap with the final response; it is not a completion verdict. The app cannot autonomously prove semantic behavior, test success, or execution identity. It highlights missing textual references and file-evidence issues so the user can pass the generated repair prompt back to the AI, which should inspect the real project and run appropriate checks. For persistence evidence, select the actual target project folder. Hash equality confirms identical bytes at scan time, not who wrote them; a pre-change Git baseline can show changes but not authorship.
 
 ## Web app
 
@@ -20,21 +20,21 @@ Requires Node.js 20 or newer. No install step or third-party dependencies.
 npm start
 ```
 
-Open `http://127.0.0.1:4173`. Paste the final AI response, select the AI output folder, and optionally select the actual target project folder for SHA-256 snapshot comparison. Processing stays in the browser; files are read locally and never uploaded.
+Open `http://127.0.0.1:4173`. Paste the original user request and AI's final response, select the AI output folder, and preferably select the actual target project folder for SHA-256 snapshot comparison. Review the requirements and file evidence, then copy the generated repair prompt back into the AI conversation. Processing stays in the browser; files are read locally and never uploaded.
 
 ## CLI
 
 ```sh
-node ./bin/claimcheck.js --chat ./final-response.md --artifacts ./ai-output
+node ./bin/claimcheck.js --request ./user-request.md --chat ./final-response.md --artifacts ./ai-output
 ```
 
 Compare against a project snapshot and Git baseline:
 
 ```sh
-node ./bin/claimcheck.js --chat ./final-response.md --artifacts ./ai-output --project ./my-project --base HEAD --json
+node ./bin/claimcheck.js --request ./user-request.md --chat ./final-response.md --artifacts ./ai-output --project ./my-project --base HEAD --json
 ```
 
-`--project` computes SHA-256 fingerprints for claimed paths to compare current project files against same-path AI outputs. Files larger than 50 MiB are not hashed. `--base` is optional; when supplied, it must resolve to a commit and enables Git change/deletion evidence relative to that commit. Untracked non-ignored files are included as additions. Exit codes: `0` no missing, contradicted, or content-mismatch claims, `1` at least one such claim, `2` invalid arguments or I/O/Git error.
+`--request` is required and is included in the JSON report's copy-ready `repairPrompt`. `--project` computes SHA-256 fingerprints for claimed paths to compare current project files against same-path AI outputs. Files larger than 50 MiB are not hashed. `--base` is optional; when supplied, it must resolve to a commit and enables Git change/deletion evidence relative to that commit. Untracked non-ignored files are included as additions. Exit codes: `0` no missing, contradicted, or content-mismatch file claims, `1` at least one such claim, `2` invalid arguments or I/O/Git error.
 
 ## Development
 

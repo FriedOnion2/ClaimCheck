@@ -1,6 +1,6 @@
 {
   "name": "claimcheck-ai-change-verifier",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": false,
   "description": "Local, vendor-neutral evidence checker for AI coding change claims",
   "type": "module",
